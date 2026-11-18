@@ -1,0 +1,141 @@
+name: Fork macOS DMG
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/desktop/**
+      - apps/ios/Kit/Package.*
+      - apps/project.yml
+      - apps/screen-macos/**
+      - apps/shared/**
+      - host/**
+      - packaging/cua-driver/**
+      - .github/fork-macos/**
+      - .github/workflows/fork-macos.yml
+      - LICENSE
+      - NOTICE
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-macos-${{ github.sha }}
+
+jobs:
+  build:
+    if: github.repository == 'david-yang-pixel/Codync' && github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Install Rust and macOS targets
+        working-directory: host
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+          shared-key: desktop-macos
+      - uses: actions/cache@v4
+        with:
+          path: build/dd/SourcePackages
+          key: ${{ runner.os }}-fork-screen-packages-${{ hashFiles('apps/project.yml', 'apps/ios/Kit/Package.*') }}
+
+      - name: Prepare native dependencies and fork artwork
+        run: |
+          mkdir -p apps/desktop/build/native
+          icon="$GITHUB_WORKSPACE/.github/fork-macos/icon.png"
+          resources=apps/desktop/resources
+          cp "$icon" "$resources/AppIcon.icon/Assets/image 9.png"
+          cp "$icon" "$resources/icon.png"
+          for suffix in '' @2x; do
+            size=18
+            if [[ "$suffix" == @2x ]]; then size=36; fi
+            sips -z "$size" "$size" "$icon" --out "$resources/tray/trayTemplate$suffix.png"
+            sips -z "$size" "$size" .github/fork-macos/icon-alert.png --out "$resources/tray/trayAlertTemplate$suffix.png"
+          done
+          swift build -c release --arch arm64 --arch x86_64 --package-path apps/desktop/native/speech-macos
+          cp "$(swift build -c release --arch arm64 --arch x86_64 --package-path apps/desktop/native/speech-macos --show-bin-path)/codync-speech" \
+            apps/desktop/build/native/codync-speech
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate --spec apps/project.yml
+
+      - name: Build universal DMG
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run icons
+          npm run dist:mac:main -- dmg --universal --config ../../.github/fork-macos/electron-builder.yml --publish never
+
+      - name: Verify installer and bundled binaries
+        working-directory: apps/desktop/dist
+        run: |
+          dmg=pixel-workbench-macos-universal.dmg
+          hdiutil verify "$dmg"
+          mountpoint=$(mktemp -d)
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mountpoint"
+          trap 'hdiutil detach "$mountpoint"' EXIT
+          contents="$mountpoint/Pixel Workbench.app/Contents"
+          codesign --verify --deep --strict "$mountpoint/Pixel Workbench.app"
+          lipo -verify_arch arm64 x86_64 "$contents/MacOS/Pixel Workbench"
+          lipo -verify_arch arm64 x86_64 "$contents/Resources/codync-host"
+          lipo -verify_arch arm64 x86_64 "$contents/Resources/codync-speech"
+          ELECTRON_RUN_AS_NODE=1 "$contents/MacOS/Pixel Workbench" --version
+          "$contents/Resources/codync-host" --version
+          test -L "$mountpoint/Applications"
+          test -f "$contents/Resources/LICENSE-Codync.txt"
+          test -f "$contents/Resources/NOTICE-Codync.txt"
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fork-macos-dmg
+          path: |
+            apps/desktop/dist/pixel-workbench-macos-universal.dmg
+            apps/desktop/dist/pixel-workbench-macos-universal.dmg.sha256
+          if-no-files-found: error
+          overwrite: true
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: fork-macos-dmg
+      - name: Publish DMG and checksum to the fork
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dmg=pixel-workbench-macos-universal.dmg
+          sha256sum --check "$dmg.sha256"
+          short_sha=${GITHUB_SHA:0:12}
+          tag="fork-macos-$short_sha"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' > draft.txt; then
+            if [[ $(cat draft.txt) == true ]]; then
+              gh release upload "$tag" "$dmg" "$dmg.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+              gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+            else
+              gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets \
+                --jq '.assets[].name' > assets.txt
+              grep -Fx "$dmg" assets.txt
+              grep -Fx "$dmg.sha256" assets.txt
+            fi
+          else
+            gh release create "$tag" "$dmg" "$dmg.sha256" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "Pixel Workbench macOS ($short_sha)" --prerelease --latest=false \
+              --notes "Universal macOS installer built from $GITHUB_SHA. Built on [Codync](https://github.com/leepokai/Codync)."$'\n\n'"The app is ad hoc signed and has no Apple notarization. Download new builds from this fork's Releases."
+          fi

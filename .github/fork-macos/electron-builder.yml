@@ -1,0 +1,26 @@
+extends: ./electron-builder.yml
+appId: io.github.david-yang-pixel.workbench
+productName: Pixel Workbench
+extraMetadata:
+  productName: Pixel Workbench
+extraResources:
+  - from: ../../LICENSE
+    to: LICENSE-Codync.txt
+  - from: ../../NOTICE
+    to: NOTICE-Codync.txt
+publish:
+  provider: github
+  owner: david-yang-pixel
+  repo: Codync
+  releaseType: prerelease
+mac:
+  identity: "-"
+  # Ad hoc signatures have no Team ID for hardened runtime library validation.
+  hardenedRuntime: false
+  notarize: false
+  timestamp: none
+dmg:
+  artifactName: pixel-workbench-macos-universal.dmg
+  background: null
+  title: Pixel Workbench
+  writeUpdateInfo: false
