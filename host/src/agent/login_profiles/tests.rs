@@ -287,3 +287,71 @@ fn an_account_is_in_use_by_a_task_that_works_on_it() {
     assert_eq!(users(&store, "a2").expect("bots"), ["Own"], "its agent runs on it until its item ends");
     assert_eq!(users(&store, "gone").expect("bots"), Vec::<String>::new(), "a task that ended holds nothing");
 }
+
+#[tokio::test]
+async fn magpie_uses_only_the_named_gateway_profile_and_leaves_existing_claude_bots_alone() {
+    let store = unlocked(&[("a1", "claude")]);
+    rename(&store, "claude", Some("a1"), "Magpie (Codync)").expect("rename account");
+    let mut choices = vec![json!({"id": "claude", "name": "Claude Code", "available": true, "registry": "claude-acp"})];
+    magpie::add_choice(&store, &mut choices);
+    assert_eq!(choices[0]["botSelectable"], false);
+    assert_eq!(choices[1]["id"], magpie::BACKEND);
+    assert_eq!(choices[1]["available"], false);
+    let launch = |backend, profile| crate::agent::auth::launch_env(&store, backend, profile);
+    assert!(launch(magpie::BACKEND, None).is_err(), "an account with the same name is not a gateway");
+    assert!(magpie::profile(&store, None).is_err());
+
+    let added = add(&store, "claude", Kind::ApiKey).await.expect("add profile");
+    let id = added["id"].as_str().expect("id");
+    rename(&store, "claude", Some(id), "Magpie (Codync)").expect("name the gateway");
+    let vars = json!({
+        "ANTHROPIC_BASE_URL": "http://127.0.0.1:12345",
+        "ANTHROPIC_AUTH_TOKEN": "fixture-token",
+        "ANTHROPIC_MODEL": "fixture-model",
+        "CLAUDE_CODE_OAUTH_TOKEN": "fixture-oauth",
+        "CLAUDE_CODE_USE_BEDROCK": "1"
+    });
+    keys::set(&store, id, vars.as_object().expect("vars"), &[]).await.expect("configure the gateway");
+    let mut choices = vec![choices.remove(0)];
+    magpie::add_choice(&store, &mut choices);
+    assert_eq!(choices[1]["available"], true);
+
+    let mut cfg = bot(magpie::BACKEND, None);
+    cfg.model = Some("inherited-model".into());
+    settle(&store, &mut cfg).expect("pin the gateway profile");
+    assert_eq!(cfg.login_profile.as_deref(), Some(id));
+    assert_eq!(cfg.model.as_deref(), Some("inherited-model"));
+    let plan = launch(magpie::BACKEND, cfg.login_profile.as_deref()).expect("dedicated environment").0;
+    let plan: std::collections::HashMap<_, _> = plan.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    assert_eq!(plan["ANTHROPIC_BASE_URL"], "http://127.0.0.1:12345");
+    assert_eq!(plan["ANTHROPIC_AUTH_TOKEN"], "fixture-token");
+    assert_eq!(plan["ANTHROPIC_MODEL"], "fixture-model");
+    assert_eq!(plan["ANTHROPIC_API_KEY"], "");
+    assert_eq!(plan["CLAUDE_CODE_OAUTH_TOKEN"], "");
+    assert_eq!(plan["CLAUDE_CODE_USE_BEDROCK"], "");
+    assert!(plan["CLAUDE_CONFIG_DIR"].contains("claude-magpie"));
+    let selected = magpie::profile(&store, Some(id)).expect("gateway profile");
+    assert!(!magpie::overridden_models(&selected).expect("catalog").to_string().contains("fixture-"));
+    assert_eq!(choices[1]["modelFromProfile"], true);
+    let no_override = json!({"ANTHROPIC_MODEL": ""});
+    keys::set(&store, id, no_override.as_object().expect("vars"), &[]).await.expect("clear the override");
+    let selected = magpie::profile(&store, Some(id)).expect("gateway profile");
+    assert!(magpie::overridden_models(&selected).is_none());
+    assert_eq!(cfg.model.as_deref(), Some("inherited-model"));
+    assert!(launch(magpie::BACKEND, Some("a1")).is_err());
+
+    let mut legacy = bot("claude", Some("a1"));
+    legacy.model = Some("opus".into());
+    settle(&store, &mut legacy).expect("old configuration still works");
+    assert_eq!(legacy.login_profile.as_deref(), Some("a1"));
+    assert_eq!(legacy.model.as_deref(), Some("opus"));
+    let native = launch("claude", Some("a1")).expect("native account still works").0;
+    assert!(!native.iter().any(|(_, value)| value.starts_with("fixture-")));
+
+    let bad_gateway = json!({"ANTHROPIC_BASE_URL": "https://api.anthropic.com"});
+    keys::set(&store, id, bad_gateway.as_object().expect("vars"), &[]).await.expect("edit gateway");
+    assert!(launch(magpie::BACKEND, Some(id)).is_err(), "never send the gateway token to native Claude");
+    let removed = json!({"ANTHROPIC_BASE_URL": ""});
+    keys::set(&store, id, removed.as_object().expect("vars"), &[]).await.expect("remove URL");
+    assert!(launch(magpie::BACKEND, Some(id)).is_err(), "no fallback after a config edit");
+}

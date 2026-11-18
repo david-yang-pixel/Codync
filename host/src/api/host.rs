@@ -318,6 +318,7 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
 fn agents(hub: &Hub) -> Vec<Value> {
     let mut agents = backends::list();
     crate::agent::login_profiles::annotate(&hub.store, &mut agents);
+    crate::agent::login_profiles::magpie::add_choice(&hub.store, &mut agents);
     agents
 }
 

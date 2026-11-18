@@ -46,8 +46,6 @@ import com.codync.android.design.*
     var draft by remember { mutableStateOf(BotDraft()) }
     val online = state.actualConnection is LinkState.Ready
     val dismiss = LocalDismissModal.current
-    // A new bot starts on an installed agent we know (again on another computer); the host turns on every connector and skill.
-    LaunchedEffect(state.computer.id, state.hello) { draft = fillDefaults(draft, state) }
     CreateLayout(state, "New bot", draft.name, { draft = draft.copy(name = it) }, "Name your bot", online, { store.saveBot(draft) { dismiss() } },
         { CharacterAvatar(draft.avatarShape, draft.avatarColor, 96.dp) }) {
         AvatarPicker(draft.avatarShape, draft.avatarColor, { draft = draft.copy(avatarShape = it) }, { draft = draft.copy(avatarColor = it) })
@@ -108,11 +106,4 @@ import com.codync.android.design.*
         Box(Modifier.ring(picked)) { BotAvatar(bot, bots, 44.dp) }
         Text(bot.name, style = Type.caption, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
-}
-
-/** Picks an installed agent we know (a registry agent nobody chose is never the default). */
-private fun fillDefaults(draft: BotDraft, state: AppState): BotDraft {
-    val backends = backends(state)
-    if (backends.any { it.text("id") == draft.backend && it.available }) return draft
-    return backends.firstOrNull { it.available && it.curated }?.text("id")?.let { draft.copy(backend = it) } ?: draft
 }

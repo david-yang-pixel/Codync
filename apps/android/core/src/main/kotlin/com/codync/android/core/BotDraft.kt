@@ -15,7 +15,7 @@ data class BotDraft(
     val description: String = "",
     val avatarColor: String = AVATAR_COLORS.random(),
     val avatarShape: String = AVATAR_SHAPES.random(),
-    val backend: String = "claude",
+    val backend: String = "codex",
     val command: String? = null,
     val cwd: String = "",
     /** `ask` or `auto`: whether Codync asks about what the agent asks, or approves it. */

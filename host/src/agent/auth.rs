@@ -37,7 +37,7 @@ mod proxied;
 pub use agent::authenticate;
 use agent::start;
 pub(crate) use agent::{Started, authenticate_account, start_with};
-pub use models::{InFlight, models, shared_models};
+pub use models::{InFlight, shared_models};
 pub(crate) use models::{model_config, model_ids};
 
 #[derive(Clone, Debug, Serialize)]
@@ -182,6 +182,9 @@ pub fn launch_env(
     login_profile: Option<&str>,
 ) -> Result<(Vec<(String, String)>, Grants)> {
     let (own, own_grants) = crate::agent::login_profiles::env(store, backend, login_profile)?;
+    if backend == crate::agent::login_profiles::magpie::BACKEND {
+        return Ok((own, own_grants));
+    }
     // A login profile wins over a key saved for the agent, which the agent would run on instead.
     let login_keys = if own.is_empty() { &[] } else { crate::agent::login_profiles::login_keys(backend) };
     let (mut env, mut grants) = env_without(store, &env_slot(backend), login_keys)?;
@@ -196,6 +199,9 @@ pub fn launch_env(
 /// Whether [`launch_env`] reads the vault, which has to be open then: keys are saved for the agent, or it runs on
 /// an API key login profile.
 pub fn launch_reads_vault(store: &Store, backend: &str, login_profile: Option<&str>) -> Result<bool> {
+    if backend == crate::agent::login_profiles::magpie::BACKEND {
+        return Ok(true);
+    }
     Ok(crate::market::vault::saved(store, &env_slot(backend))?
         || crate::agent::login_profiles::reads_vault(store, backend, login_profile))
 }

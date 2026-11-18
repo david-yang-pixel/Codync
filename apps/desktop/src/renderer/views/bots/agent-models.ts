@@ -42,9 +42,12 @@ export function useAgentModels(backend: string): AgentModelsState {
   const [failure, setFailure] = useState<string | null>(null)
   const [retry, setRetry] = useState(0)
   const custom = backend === 'custom'
+  const choice = store.hello?.backends.find((b) => b.id === backend)
+  const profileModel = choice?.modelFromProfile
+  const available = choice?.available
 
   useEffect(() => {
-    const key = `${store.computer.id}/${backend}`
+    const key = `${store.computer.id}/${backend}/${profileModel}/${available}`
     if (scope.current !== key) {
       setCatalog(null)
       scope.current = key
@@ -67,7 +70,7 @@ export function useAgentModels(backend: string): AgentModelsState {
     return () => {
       cancelled = true
     }
-  }, [store.computer.id, store.client, backend, online, retry, custom])
+  }, [store.computer.id, store.client, backend, online, retry, custom, profileModel, available])
 
   return { catalog, loading, failure, reload: () => setRetry((r) => r + 1) }
 }

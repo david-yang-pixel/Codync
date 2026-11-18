@@ -233,6 +233,9 @@ public struct UsageWindow: Codable, Hashable, Sendable, Identifiable {
 }
 
 public struct Backend: Codable, Hashable, Sendable, Identifiable {
+    public var botSelectable: Bool?
+    public var profileBacked: Bool?
+    public var modelFromProfile: Bool?
     public var id: String
     public var name: String
     public var available: Bool
@@ -435,7 +438,7 @@ public struct BotDraft: Codable, Hashable, Sendable {
     public var taskWorktrees: Bool?
 
     public init(name: String = "", description: String = "", avatarColor: String = AvatarPalette.colors.randomElement()!.id,
-                avatarShape: String = AvatarPalette.shapes.randomElement()!, backend: String = "claude", cwd: String = "",
+                avatarShape: String = AvatarPalette.shapes.randomElement()!, backend: String = "codex", cwd: String = "",
                 permission: String = "ask", mode: String? = AgentMode.auto) {
         self.name = name
         self.description = description

@@ -1,10 +1,10 @@
 //! The models an agent offers, read from a session it opens for that alone.
 
-use super::{Started, probe_dir, start, text};
+use super::{Started, agent::start_with, probe_dir, text};
 use crate::LockExt;
 use crate::agent::acp::Incoming;
+use crate::agent::login_profiles::{self, magpie};
 use crate::hub::Hub;
-use crate::store::Store;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -35,16 +35,32 @@ impl InFlight {
 }
 
 /// [`models`], shared with the asks for the same agent meanwhile.
-pub async fn shared_models(hub: &Hub, backend: &str) -> Result<Value> {
-    hub.model_lists.get(backend, models(&hub.store, backend)).await
+pub async fn shared_models(hub: &Arc<Hub>, backend: &str) -> Result<Value> {
+    hub.model_lists.get(backend, models(hub, backend)).await
 }
 
 /// Discover the agent's advertised models in an isolated, prompt-free session.
 /// This uses the same credentials as actual bot sessions and never reads project files.
-pub async fn models(store: &Store, backend: &str) -> Result<Value> {
-    let Started { acp, mut inbox, .. } = start(store, backend).await?;
+async fn models(hub: &Arc<Hub>, backend: &str) -> Result<Value> {
+    let magpie_profile = if backend == magpie::BACKEND {
+        let profile = magpie::profile(&hub.store, None)?;
+        if let Some(catalog) = magpie::overridden_models(&profile) {
+            return Ok(catalog);
+        }
+        crate::market::vault::unlock(hub.clone()).await?;
+        Some(profile.account.id)
+    } else {
+        None
+    };
+    let profile = magpie_profile.as_deref();
+    let _hold = login_profiles::hold(&hub.store, backend, profile)?;
+    let Started { acp, mut inbox, .. } = start_with(&hub.store, backend, profile, &[]).await?;
     let result = tokio::time::timeout(Duration::from_mins(1), async {
-        let request = acp.request("session/new", json!({"cwd": probe_dir(), "mcpServers": []}));
+        let mut params = json!({"cwd": probe_dir(), "mcpServers": []});
+        if profile.is_some() {
+            params["_meta"] = json!({"claudeCode": {"options": {"settingSources": [], "persistSession": false}}});
+        }
+        let request = acp.request("session/new", params);
         tokio::pin!(request);
         let session = loop {
             tokio::select! {

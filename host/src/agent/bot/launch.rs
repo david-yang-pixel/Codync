@@ -41,6 +41,9 @@ fn claude_options(cfg: &BotConfig) -> Value {
 
 /// Ways to start the bot's agent over ACP, best first: its own command, else its backend's.
 pub(crate) fn launch_commands(cfg: &BotConfig) -> Result<Vec<Candidate>> {
+    if cfg.backend == crate::agent::login_profiles::magpie::BACKEND {
+        return backends::launch_candidates(&cfg.backend);
+    }
     Ok(match cfg.command.as_deref().map(str::trim) {
         Some(c) if !c.is_empty() => vec![Candidate::Ready(Cmd { program: c.to_owned(), args: String::new() })],
         _ => backends::launch_candidates(&cfg.backend)?,
@@ -50,9 +53,20 @@ pub(crate) fn launch_commands(cfg: &BotConfig) -> Result<Vec<Candidate>> {
 /// Switches a session (`session/new`, `session/load` or `session/resume` answered `res`) to the bot's
 /// chosen model, then sets that model's options (effort, fast…). Returns the answer holding
 /// the session's config options now: a model can change them.
-pub(crate) async fn select_model(acp: &Acp, res: &Value, sid: &str, cfg: &BotConfig) -> Result<Value> {
-    let selected = cfg.model.as_deref().filter(|m| !m.is_empty());
-    let (model, options) = model_choice(res, selected.unwrap_or("Default"), &cfg.model_options);
+pub(crate) async fn select_model(conn: &Conn, res: &Value, sid: &str, cfg: &BotConfig) -> Result<Value> {
+    let acp = &conn.acp;
+    let configured = cfg.model.as_deref().filter(|m| !m.is_empty());
+    let (selected, model, options) = if let Some(profile_model) = conn.profile_model.as_deref() {
+        // The SDK starts with the model from the profile. On load an adapter may
+        // report the saved session's earlier choice. Reapply the override before prompting.
+        let current = crate::agent::auth::model_config(res)
+            .and_then(|config| config["currentValue"].as_str())
+            .or_else(|| res["models"]["currentModelId"].as_str());
+        (current.filter(|id| *id != profile_model), profile_model, Vec::new())
+    } else {
+        let (model, options) = model_choice(res, configured.unwrap_or("Default"), &cfg.model_options);
+        (configured, model, options)
+    };
     let set = |id: &str, value: &str| {
         acp.request("session/set_config_option", json!({"sessionId": sid, "configId": id, "value": value}))
     };
@@ -231,6 +245,12 @@ pub(crate) async fn start_agent(
         rx,
         sessions,
         adapter: adapter(&init),
+        profile_model: (backend == crate::agent::login_profiles::magpie::BACKEND)
+            .then(|| {
+                env.iter().find(|(key, value)| key == crate::agent::login_profiles::magpie::MODEL && !value.is_empty())
+            })
+            .flatten()
+            .map(|(_, value)| value.clone()),
         superseded: superseded(&init),
         loaded: HashMap::new(),
         spent: false,

@@ -62,10 +62,17 @@ pub fn listed(store: &Store, cfg: &BotConfig, agent: &str) -> Vec<AgentCommand> 
     if saved.agent != agent {
         return Vec::new();
     }
+    use crate::agent::login_profiles::magpie;
+    let profile_model = agent == magpie::BACKEND
+        && magpie::profile(store, cfg.login_profile.as_deref()).is_ok_and(|profile| magpie::sets_model(&profile));
     saved
         .commands
         .into_iter()
-        .filter(|c| !BUILT_IN.contains(&c.name.as_str()) && !cfg.skills.contains(&c.name))
+        .filter(|c| {
+            !BUILT_IN.contains(&c.name.as_str())
+                && !cfg.skills.contains(&c.name)
+                && !(profile_model && c.name.eq_ignore_ascii_case("model"))
+        })
         .collect()
 }
 

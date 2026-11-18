@@ -149,7 +149,13 @@ Changing the model or its options starts a new agent session; the chat history s
 
 ## The agent for a new bot
 
-There's no separate default-agent setting. A new bot gets Claude Code when Claude Code can run on the computer. Otherwise it gets the first agent Codync knows by name that can. A registry agent is never picked on its own. Change the agent in the bot's settings after you create it.
+New bots start with **Codex** and use the model configured as the default in Codex. To pick another model or agent, open the bot's settings after creating it.
+
+### Claude Magpie
+
+In **Extensions → Agents → Claude Code → Login profiles**, create or reuse a single **API key** login profile named **Magpie (Codync)**. Set `ANTHROPIC_BASE_URL` to your gateway and supply `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY`. Set `ANTHROPIC_MODEL` if your gateway requires a specific model.
+
+Select **Claude Magpie** in the bot's **Agent** settings. It uses Claude Code's ACP adapter and applies the model override from that login profile when set. Otherwise you can use Claude’s default or pick a model. Without the gateway profile and credentials it cannot start. Bots already set to Claude Code keep their assigned login and model. Manage the gateway credentials through Claude Code's Login profiles.
 
 ## When an agent runs out
 

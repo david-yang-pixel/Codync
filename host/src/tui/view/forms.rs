@@ -188,6 +188,9 @@ pub(super) fn form_view(buf: &mut Buffer, area: Rect, app: &App, f: &Form) {
                 let hint = tr("e.g. Reviews PRs. Never pushes without asking.");
                 text_field(buf, &f.instructions, &hint, y);
             }
+            Field::Model if app.model_from_profile(&f.backend) => {
+                put(buf, vx, y, vw, &format!("{} · {}", tr("Default"), tr("Login profile")), t.dim.patch(base));
+            }
             Field::Model => {
                 text_field(buf, &f.model, "default", y);
                 let hint = match app.models.get(&f.backend) {

@@ -148,6 +148,9 @@ pub fn check(cfg: &BotConfig) -> Result<()> {
 
 /// What the user calls agent `backend`.
 pub fn name(backend: &str) -> String {
+    if backend == super::login_profiles::magpie::BACKEND {
+        return super::login_profiles::magpie::NAME.into();
+    }
     if backend == "custom" {
         return "Custom command".into();
     }

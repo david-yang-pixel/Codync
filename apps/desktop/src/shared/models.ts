@@ -562,6 +562,10 @@ export interface Usage {
 }
 
 export interface Backend {
+  /** Whether Bot settings should offer this agent for new selections. */
+  botSelectable?: boolean
+  profileBacked?: boolean
+  modelFromProfile?: boolean
   id: string
   name: string
   available: boolean

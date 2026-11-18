@@ -199,6 +199,8 @@ pub(crate) struct Conn {
     pub(crate) rx: mpsc::UnboundedReceiver<Incoming>,
     sessions: SessionCaps,
     pub(crate) adapter: Adapter,
+    /// The process was started with a model override in its gateway login profile.
+    pub(crate) profile_model: Option<String>,
     /// An OpenCode older than 2, which never ends a turn its model refused: `start_first` keeps it as a last resort.
     superseded: bool,
     /// Sessions already created or loaded in this process, and when each was last used.

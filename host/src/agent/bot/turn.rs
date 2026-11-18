@@ -260,6 +260,11 @@ impl Actor {
             }
         }
         let sid = self.turn_session.clone().ok_or_else(|| anyhow!("no session"))?;
+        if self.conn.as_ref().is_some_and(|conn| conn.profile_model.is_some())
+            && crate::market::slash_command(text).is_some_and(|(name, _)| name.eq_ignore_ascii_case("model"))
+        {
+            anyhow::bail!("Claude Magpie's login profile sets the model. Change the model in the login profile.");
+        }
         // The user's own `/command` for the agent goes as typed, so the agent runs it; what Codync would add waits
         // for the next message.
         let agent_command = from_user && self.active_group.is_none() && self.is_agent_command(text);

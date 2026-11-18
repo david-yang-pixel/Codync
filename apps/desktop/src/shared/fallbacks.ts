@@ -19,6 +19,7 @@ export const stepLogin = (bot: Bot): Login | null => bot.agentStep && { backend:
 
 /** The logins of agent `backend` a new step can still take: its login profiles that are signed in and, first as `null`, the computer's own, without the ones the chain has. */
 export function freeLogins(backend: Backend, taken: Login[]): (string | null)[] {
+  if (backend.profileBacked) return backend.available && !taken.some((t) => t.backend === backend.id) ? [null] : []
   const own: (string | null)[] = [null]
   const all = own.concat((backend.loginProfiles ?? []).filter((p) => p.signedIn).map((p) => p.id))
   return all.filter((loginProfile) => !taken.some((t) => sameLogin(t, { backend: backend.id, loginProfile })))
@@ -27,7 +28,7 @@ export function freeLogins(backend: Backend, taken: Login[]): (string | null)[] 
 /** The agents a step can use: each with a login the rest of the chain (`taken`) doesn't have, and the ones `keep` is on
  * while no other step has that login (a step keeps its own login, even one that has signed out since). */
 export const stepAgents = (backends: Backend[], taken: Login[], keep: (Login | null)[] = []): Backend[] =>
-  backends.filter((b) => keep.some((k) => k?.backend === b.id && !taken.some((t) => sameLogin(t, k))) || freeLogins(b, taken).length > 0)
+  backends.filter((b) => keep.some((k) => k?.backend === b.id && !taken.some((t) => sameLogin(t, k))) || (b.botSelectable !== false && freeLogins(b, taken).length > 0))
 
 /** The logins `step` can pick on its agent: the free ones, and its own, even one that has signed out since. */
 export function stepLogins(agent: Backend, step: Login, taken: Login[]): (string | null)[] {

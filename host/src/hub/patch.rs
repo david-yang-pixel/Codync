@@ -14,6 +14,13 @@ pub(super) fn patched(stored: &BotConfig, patch: &Value) -> Result<BotConfig> {
         }
     }
     let mut cfg: BotConfig = serde_json::from_value(merged)?;
+    if cfg.backend != stored.backend
+        && (cfg.backend == crate::agent::login_profiles::magpie::BACKEND
+            || stored.backend == crate::agent::login_profiles::magpie::BACKEND)
+        && patch.get("loginProfile").is_none()
+    {
+        cfg.login_profile = None;
+    }
     // A list that names each step's agent alone (a bot's own tools) sends no login profile, which isn't the user
     // clearing it: the step keeps its saved one (the apps send `loginProfile`, `null` for none).
     if let Some(sent) = patch.get("fallbacks").and_then(Value::as_array) {

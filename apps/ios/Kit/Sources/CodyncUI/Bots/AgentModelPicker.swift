@@ -13,6 +13,7 @@ struct AgentModelPicker<Details: View>: View {
     /// The saved bot: whether its own sessions offer Fast mode, and why the agent refused it.
     var bot: Bot?
     var agents: [(String, String)] = []
+    var hiddenAgents: Set<String> = []
     var onAgentChange: ((String) -> Void)?
     var command: Binding<String?>?
     var installHint: String?
@@ -34,9 +35,11 @@ struct AgentModelPicker<Details: View>: View {
     @State private var failure: String?
     @State private var retry = 0
 
-    private var requestKey: String {
-        "\(store.computer.id)/\(backend)/\(store.connection == .online)/\(retry)"
+    private var selectedBackend: Backend? { store.hello?.backends.first { $0.id == backend } }
+    private var requestScope: String {
+        "\(store.computer.id)/\(backend)/\(modelFromProfile)/\(selectedBackend?.available == true)"
     }
+    private var requestKey: String { "\(requestScope)/\(store.connection == .online)/\(retry)" }
 
     /// The agent's own "Default (recommended)" entry is the same choice as leaving the model unset,
     /// so it folds into the single Default row instead of showing twice.
@@ -45,6 +48,7 @@ struct AgentModelPicker<Details: View>: View {
     }
 
     private var modelChoices: [(String, String)] {
+        if modelFromProfile { return [("", modelName)] }
         let available = (catalog?.models ?? []).filter { $0.id != agentDefault?.id }
         let current = available.first { $0.id == catalog?.currentModelId }?.name
         var result = [("", agentDefault?.name ?? current.map { "Default · \($0)" } ?? "Default")]
@@ -58,7 +62,7 @@ struct AgentModelPicker<Details: View>: View {
 
     private var value: Binding<String> {
         Binding(
-            get: { selection == agentDefault?.id ? "" : selection ?? "" },
+            get: { modelFromProfile || selection == agentDefault?.id ? "" : selection ?? "" },
             set: {
                 let model = $0.isEmpty ? nil : $0
                 guard model != selection else { return }
@@ -74,7 +78,7 @@ struct AgentModelPicker<Details: View>: View {
     }
 
     private var modelOptions: [AgentModels.Option] {
-        guard !value.wrappedValue.isEmpty || catalog?.defaultModelOptions == true else { return [] }
+        guard !modelFromProfile, !value.wrappedValue.isEmpty || catalog?.defaultModelOptions == true else { return [] }
         return selectedModel?.options ?? []
     }
 
@@ -85,7 +89,11 @@ struct AgentModelPicker<Details: View>: View {
     }
 
     private var agentName: String { agents.first { $0.0 == backend }?.1 ?? backend }
-    private var modelName: String { value.wrappedValue.isEmpty ? L10n.tr("Default") : modelChoices.first { $0.0 == value.wrappedValue }?.1 ?? value.wrappedValue }
+    private var modelFromProfile: Bool { selectedBackend?.modelFromProfile == true }
+    private var modelName: String {
+        if modelFromProfile { return [L10n.tr("Default"), L10n.tr("Login profile")].joined(separator: " · ") }
+        return value.wrappedValue.isEmpty ? L10n.tr("Default") : modelChoices.first { $0.0 == value.wrappedValue }?.1 ?? value.wrappedValue
+    }
     private var summary: String {
         let settings = modelOptions.compactMap { option in
             option.values.first { $0.id == (options[option.id] ?? option.default) }?.name
@@ -179,7 +187,7 @@ struct AgentModelPicker<Details: View>: View {
                 TextField(stage == .agents ? "Search agents" : "Search models", text: $query).plainTextInput()
                 refreshControl
             }
-            let choices = (stage == .agents ? agents : modelChoices).filter {
+            let choices = (stage == .agents ? agents.filter { !hiddenAgents.contains($0.0) } : modelChoices).filter {
                 query.isEmpty || $0.1.localizedCaseInsensitiveContains(query)
             }
             ScrollView {
@@ -209,7 +217,7 @@ struct AgentModelPicker<Details: View>: View {
             }
             .scrollEdges()
             .frame(maxHeight: 180)
-            if stage == .models, backend == "custom" || (!loading && catalog?.models.isEmpty != false) {
+            if stage == .models, !modelFromProfile, backend == "custom" || (!loading && catalog?.models.isEmpty != false) {
                 TextField("Default", text: value).plainTextInput().fieldBox()
             }
         }
@@ -236,7 +244,7 @@ struct AgentModelPicker<Details: View>: View {
     }
 
     @MainActor private func load() async {
-        let scope = "\(store.computer.id)/\(backend)"
+        let scope = requestScope
         if catalogScope != scope {
             catalog = nil
             catalogScope = scope
