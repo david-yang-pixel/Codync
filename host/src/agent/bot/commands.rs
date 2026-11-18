@@ -3,6 +3,7 @@
 //! goes to the agent as typed, so the agent runs it (docs/features/marketplace.md, "Commands").
 
 use super::Actor;
+use crate::agent::login_profiles::magpie;
 use crate::store::{BotConfig, Store};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -62,16 +63,15 @@ pub fn listed(store: &Store, cfg: &BotConfig, agent: &str) -> Vec<AgentCommand> 
     if saved.agent != agent {
         return Vec::new();
     }
-    use crate::agent::login_profiles::magpie;
     let profile_model = agent == magpie::BACKEND
         && magpie::profile(store, cfg.login_profile.as_deref()).is_ok_and(|profile| magpie::sets_model(&profile));
     saved
         .commands
         .into_iter()
         .filter(|c| {
-            !BUILT_IN.contains(&c.name.as_str())
-                && !cfg.skills.contains(&c.name)
-                && !(profile_model && c.name.eq_ignore_ascii_case("model"))
+            !(BUILT_IN.contains(&c.name.as_str())
+                || cfg.skills.contains(&c.name)
+                || (profile_model && c.name.eq_ignore_ascii_case("model")))
         })
         .collect()
 }
