@@ -11,6 +11,7 @@ on:
       - apps/shared/**
       - host/**
       - packaging/cua-driver/**
+      - packaging/dmg/**
       - .github/fork-macos/**
       - .github/workflows/fork-macos.yml
       - LICENSE
@@ -52,24 +53,15 @@ jobs:
           path: build/dd/SourcePackages
           key: ${{ runner.os }}-fork-screen-packages-${{ hashFiles('apps/project.yml', 'apps/ios/Kit/Package.*') }}
 
-      - name: Prepare native dependencies and fork artwork
+      - name: Prepare native dependencies and DMG background
         run: |
           mkdir -p apps/desktop/build/native
-          icon="$GITHUB_WORKSPACE/.github/fork-macos/icon.png"
-          resources=apps/desktop/resources
-          cp "$icon" "$resources/AppIcon.icon/Assets/image 9.png"
-          cp "$icon" "$resources/icon.png"
-          for suffix in '' @2x; do
-            size=18
-            if [[ "$suffix" == @2x ]]; then size=36; fi
-            sips -z "$size" "$size" "$icon" --out "$resources/tray/trayTemplate$suffix.png"
-            sips -z "$size" "$size" .github/fork-macos/icon-alert.png --out "$resources/tray/trayAlertTemplate$suffix.png"
-          done
           swift build -c release --arch arm64 --arch x86_64 --package-path apps/desktop/native/speech-macos
           cp "$(swift build -c release --arch arm64 --arch x86_64 --package-path apps/desktop/native/speech-macos --show-bin-path)/codync-speech" \
             apps/desktop/build/native/codync-speech
           command -v xcodegen >/dev/null || brew install xcodegen
           xcodegen generate --spec apps/project.yml
+          swift packaging/dmg/background.swift apps/desktop/build/dmg-background.tiff
 
       - name: Build universal DMG
         working-directory: apps/desktop
@@ -83,17 +75,21 @@ jobs:
       - name: Verify installer and bundled binaries
         working-directory: apps/desktop/dist
         run: |
-          dmg=pixel-workbench-macos-universal.dmg
+          dmg=codync-macos.dmg
           hdiutil verify "$dmg"
           mountpoint=$(mktemp -d)
           hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mountpoint"
           trap 'hdiutil detach "$mountpoint"' EXIT
-          contents="$mountpoint/Pixel Workbench.app/Contents"
-          codesign --verify --deep --strict "$mountpoint/Pixel Workbench.app"
-          lipo "$contents/MacOS/Pixel Workbench" -verify_arch arm64 x86_64
+          app="$mountpoint/Codync.app"
+          contents="$app/Contents"
+          codesign --verify --deep --strict "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$contents/Info.plist")" = Codync
+          test -s "$contents/Resources/Assets.car"
+          test -s "$contents/Resources/icon.icns"
+          lipo "$contents/MacOS/Codync" -verify_arch arm64 x86_64
           lipo "$contents/Resources/codync-host" -verify_arch arm64 x86_64
           lipo "$contents/Resources/codync-speech" -verify_arch arm64 x86_64
-          ELECTRON_RUN_AS_NODE=1 "$contents/MacOS/Pixel Workbench" --version
+          ELECTRON_RUN_AS_NODE=1 "$contents/MacOS/Codync" --version
           "$contents/Resources/codync-host" --version
           test -L "$mountpoint/Applications"
           test -f "$contents/Resources/LICENSE-Codync.txt"
@@ -104,8 +100,8 @@ jobs:
         with:
           name: fork-macos-dmg
           path: |
-            apps/desktop/dist/pixel-workbench-macos-universal.dmg
-            apps/desktop/dist/pixel-workbench-macos-universal.dmg.sha256
+            apps/desktop/dist/codync-macos.dmg
+            apps/desktop/dist/codync-macos.dmg.sha256
           if-no-files-found: error
           overwrite: true
           compression-level: 0
@@ -125,7 +121,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          dmg=pixel-workbench-macos-universal.dmg
+          dmg=codync-macos.dmg
           sha256sum --check "$dmg.sha256"
           short_sha=${GITHUB_SHA:0:12}
           tag="fork-macos-$short_sha"
@@ -141,6 +137,6 @@ jobs:
             fi
           else
             gh release create "$tag" "$dmg" "$dmg.sha256" --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" --title "Pixel Workbench macOS ($short_sha)" --prerelease --latest=false \
-              --notes "Universal macOS installer built from $GITHUB_SHA. Built on [Codync](https://github.com/leepokai/Codync)."$'\n\n'"The app is ad hoc signed and has no Apple notarization. Download new builds from this fork's Releases."
+              --target "$GITHUB_SHA" --title "Codync macOS fork build ($short_sha)" --prerelease --latest=false \
+              --notes "Universal macOS installer built from commit $GITHUB_SHA of this [Codync fork](https://github.com/david-yang-pixel/Codync)."$'\n\n'"The app is ad hoc signed and has no Apple notarization. Download new builds from this fork's Releases."
           fi

@@ -1,8 +1,5 @@
 extends: ./electron-builder.yml
 appId: io.github.david-yang-pixel.workbench
-productName: Pixel Workbench
-extraMetadata:
-  productName: Pixel Workbench
 extraResources:
   - from: ../../LICENSE
     to: LICENSE-Codync.txt
@@ -20,7 +17,4 @@ mac:
   notarize: false
   timestamp: none
 dmg:
-  artifactName: pixel-workbench-macos-universal.dmg
-  background: null
-  title: Pixel Workbench
   writeUpdateInfo: false
