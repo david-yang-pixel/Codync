@@ -37,10 +37,13 @@ pub async fn one_shot(hub: &Arc<Hub>, cfg: &BotConfig, system: &str, user: &str)
         let mut params = json!({"cwd": cwd, "mcpServers": []});
         let text = match conn.instructions() {
             Instructions::ClaudeMeta => {
-                params["_meta"] = json!({
-                    "systemPrompt": system,
-                    "claudeCode": {"options": {"tools": [], "persistSession": false, "settingSources": [], "model": "haiku"}},
-                });
+                let mut options = json!({"tools": [], "persistSession": false, "settingSources": []});
+                if let Some(model) = &conn.profile_model {
+                    options["model"] = model.as_str().into();
+                } else if cfg.backend != crate::agent::login_profiles::magpie::BACKEND {
+                    options["model"] = "haiku".into();
+                }
+                params["_meta"] = json!({"systemPrompt": system, "claudeCode": {"options": options}});
                 user.to_owned()
             }
             Instructions::SystemPrompt => {
@@ -53,10 +56,11 @@ pub async fn one_shot(hub: &Arc<Hub>, cfg: &BotConfig, system: &str, user: &str)
         let sid = res["sessionId"].as_str().ok_or_else(|| anyhow!("agent returned no sessionId"))?.to_owned();
         // Same model as the bot: the harness default may be another (local) model that
         // would load next to the bot's, or a cloud one the user kept these chats away from.
-        if conn.adapter != Adapter::Claude {
-            crate::agent::bot::select_model(&acp, &res, &sid, cfg).await?;
+        if conn.adapter != Adapter::Claude || cfg.backend == crate::agent::login_profiles::magpie::BACKEND {
+            crate::agent::bot::select_model(&conn, &res, &sid, cfg).await?;
         }
-        let prompt = acp.request("session/prompt", json!({"sessionId": sid, "prompt": [{"type": "text", "text": text}]}));
+        let prompt =
+            acp.request("session/prompt", json!({"sessionId": sid, "prompt": [{"type": "text", "text": text}]}));
         tokio::pin!(prompt);
         let deadline = tokio::time::sleep(TIMEOUT);
         tokio::pin!(deadline);

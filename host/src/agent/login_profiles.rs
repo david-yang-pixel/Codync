@@ -20,6 +20,7 @@ use std::sync::Mutex;
 
 mod account;
 pub mod keys;
+pub(crate) mod magpie;
 pub use account::{login_command, refresh_default};
 
 /// Set for an agent on a login profile, so its helpers know they don't report for the default login.
@@ -135,6 +136,9 @@ pub fn rename(store: &Store, backend: &str, id: Option<&str>, name: &str) -> Res
 /// The profile `backend`'s process runs on: none for the default login, or for a profile of another agent (a
 /// fallback step on another agent keeps to its own).
 fn resolve(store: &Store, backend: &str, profile: Option<&str>) -> Result<Option<Profile>> {
+    if backend == magpie::BACKEND {
+        return magpie::profile(store, profile).map(Some);
+    }
     let Some(id) = profile else { return Ok(None) };
     let profile = find(store, id)?;
     Ok((profile.account.agent == agent_id(backend)).then_some(profile))
@@ -267,6 +271,7 @@ pub fn annotate(store: &Store, agents: &mut [Value]) {
 /// A new profile of `kind` for `backend`, not signed in yet: an account with its slot ready for the agent's
 /// sign-in, or an API key profile with no keys.
 pub async fn add(store: &Store, backend: &str, kind: Kind) -> Result<Value> {
+    anyhow::ensure!(backend != magpie::BACKEND, "Manage the Magpie profile under Claude Code");
     let agent = agent_id(backend).to_owned();
     if kind == Kind::Account && accounts_of(backend).is_none() {
         let why = format!("{backend} keeps one sign-in: add an API key instead");
@@ -341,6 +346,9 @@ fn users(store: &Store, id: &str) -> Result<Vec<String>> {
 /// What `backend`'s process needs to run on `profile`: an account's folder, or an API key profile's variables (with
 /// the grants a cloud computer's proxied keys are on). Nothing when it runs on the default login (`resolve`).
 pub fn env(store: &Store, backend: &str, profile: Option<&str>) -> Result<(Vec<(String, String)>, Grants)> {
+    if backend == magpie::BACKEND {
+        return magpie::env(store, profile);
+    }
     let Some(profile) = resolve(store, backend, profile)? else { return Ok(Default::default()) };
     match profile.kind {
         Kind::Account => Ok((account::env(&profile.account)?, Grants::default())),
@@ -485,6 +493,10 @@ pub fn settle(store: &Store, cfg: &mut BotConfig) -> Result<()> {
 }
 
 fn settled(store: &Store, backend: &str, command: Option<&str>, profile: Option<String>) -> Result<Option<String>> {
+    if backend == magpie::BACKEND {
+        anyhow::ensure!(command.is_none_or(|c| c.trim().is_empty()), "Claude Magpie requires the Claude ACP adapter");
+        return Ok(Some(magpie::profile(store, profile.as_deref())?.account.id));
+    }
     let Some(id) = profile.filter(|id| !id.is_empty()) else { return Ok(None) };
     let custom = command.is_some_and(|c| !c.trim().is_empty());
     Ok(resolve(store, backend, Some(&id))?.filter(|_| !custom).map(|_| id))

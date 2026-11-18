@@ -47,7 +47,7 @@ private const val ABOUT_FALLBACKS = "When this bot's agent runs out of usage, is
 /** The computer's agents as the Agent picker lists them: id and name, "(not installed)" when it isn't. */
 internal fun agentChoices(state: AppState): List<Pair<String, String>> = backends(state).map { info ->
     val id = info.text("id").orEmpty()
-    id to ((info.text("name") ?: id) + if (!info.available) " (not installed)" else "")
+    id to ((info.text("name") ?: id) + if (!info.available && id != "claude-magpie") " (not installed)" else "")
 }
 
 /** The chain's logins, the bot's [own] first, without step [but]'s: each is in it once, and step [but] keeps its own. */
@@ -134,6 +134,7 @@ private fun taken(own: Login, list: List<Fallback>, but: Int): List<Login> = lis
             Box(Modifier.weight(1f)) {
                 AgentModelPicker(state, store::agentModels, fallback.backend, fallback.model, fallback.modelOptions, false, null,
                     { model, options -> edit(fallback.copy(model = model, modelOptions = options)) }, null, agents = agents,
+                    hiddenAgents = choices.filterNot { it.botSelectable }.map { it.id }.toSet(),
                     chooseAgent = { id ->
                         choices.firstOrNull { it.id == id }?.let { next ->
                             val step = next.stepOn(taken, own)

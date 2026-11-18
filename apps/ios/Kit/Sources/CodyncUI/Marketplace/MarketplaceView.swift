@@ -32,7 +32,7 @@ public struct MarketplaceView: View {
     var query: String { search.trimmingCharacters(in: .whitespaces) }
 
     var agents: [Backend] {
-        let all = (model.hello?.backends ?? []).filter { $0.available || $0.installed == true || $0.curated == true }
+        let all = (model.hello?.backends ?? []).filter { $0.profileBacked != true && ($0.available || $0.installed == true || $0.curated == true) }
         return query.isEmpty ? all : all.filter { $0.name.localizedCaseInsensitiveContains(query) }
     }
 

@@ -51,8 +51,10 @@ fun Bot.stepBannerPhrase(name: (Login, own: Boolean) -> String, clock: (Long) ->
 val BotDraft.login: Login get() = Login(backend, loginProfile)
 
 /** The logins of this agent a new step can still take: the computer's own (first, as null) and its signed-in login profiles, without the ones in [taken]. */
-fun AgentBackend.freeLogins(taken: List<Login>): List<String?> =
-    (listOf<String?>(null) + loginProfiles.orEmpty().filter { it.signedIn }.map { it.id }).filter { Login(id, it) !in taken }
+fun AgentBackend.freeLogins(taken: List<Login>): List<String?> {
+    if (profileBacked) return if (available && taken.none { it.backend == id }) listOf(null) else emptyList()
+    return (listOf<String?>(null) + loginProfiles.orEmpty().filter { it.signedIn }.map { it.id }).filter { Login(id, it) !in taken }
+}
 
 /** The logins [step] can pick on this agent: the free ones, and its own, even one that has signed out since. */
 fun AgentBackend.stepLogins(step: Login, taken: List<Login>): List<String?> =
@@ -66,7 +68,7 @@ fun AgentBackend.stepOn(taken: List<Login>, own: Fallback? = null): Fallback =
 /** The agents a step can use: each with a login the rest of the chain ([taken]) doesn't have, and the ones [keep] is on
  *  while no other step has that login (a step keeps its own login, even one that has signed out since). */
 fun List<AgentBackend>.usable(taken: List<Login>, keep: List<Login> = emptyList()): List<AgentBackend> =
-    filter { backend -> keep.any { it.backend == backend.id && it !in taken } || backend.freeLogins(taken).isNotEmpty() }
+    filter { backend -> keep.any { it.backend == backend.id && it !in taken } || (backend.botSelectable && backend.freeLogins(taken).isNotEmpty()) }
 
 /** The agent the bot runs on right now: its fallback's while it's on one. */
 val Bot.runningAgent: String get() = agentStep?.agent ?: backend

@@ -90,7 +90,14 @@ impl App {
 
     /// Runnable agents a step can be on, in the pickers' order.
     fn step_agents(&self) -> Vec<String> {
-        self.agent_choices().into_iter().filter(|a| a != "custom").collect()
+        self.agent_choices()
+            .into_iter()
+            .filter(|a| a != "custom")
+            .filter(|a| {
+                a != crate::agent::login_profiles::magpie::BACKEND
+                    || self.backends.iter().any(|b| b["id"] == a.as_str() && b["available"] == true)
+            })
+            .collect()
     }
 
     /// Agent `backend`'s logins: its default one (`None`), then its signed-in login profiles.
@@ -107,6 +114,11 @@ impl App {
             (f.backend == backend && f.login_profile == *l)
                 || f.fallbacks.iter().any(|x| x.backend == backend && x.login_profile == *l)
         };
+        if backend == crate::agent::login_profiles::magpie::BACKEND
+            && (f.backend == backend || f.fallbacks.iter().any(|step| step.backend == backend))
+        {
+            return Vec::new();
+        }
         self.logins(backend).into_iter().filter(|l| !taken(l)).collect()
     }
 

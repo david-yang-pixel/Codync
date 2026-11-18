@@ -49,7 +49,6 @@ public struct NewBotView: View {
         error = nil
         var draft = draft
         draft.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        model.fillDefaults(&draft)
         Task {
             do {
                 let bot = try await model.save(draft)
@@ -59,18 +58,6 @@ public struct NewBotView: View {
                 withAnimation(Motion.fade) { self.error = error.localizedDescription }
             }
             saving = false
-        }
-    }
-}
-
-private extension BotStore {
-    /// Picks an installed agent we know (a registry agent nobody chose is never the default);
-    /// empty cwd requests a personal workspace from the host. Connectors and skills stay unset:
-    /// the host turns on every one it can run.
-    func fillDefaults(_ draft: inout BotDraft) {
-        if hello?.backends.first(where: { $0.id == draft.backend })?.available != true,
-           let first = hello?.backends.first(where: { $0.available && $0.curated == true }) {
-            draft.backend = first.id
         }
     }
 }

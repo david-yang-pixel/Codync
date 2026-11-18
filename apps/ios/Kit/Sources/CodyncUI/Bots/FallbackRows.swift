@@ -158,6 +158,7 @@ private struct FallbackRow: View {
             HStack(alignment: .top, spacing: 10) {
                 Text(L10n.tr("\(number)")).font(.subheadline.monospacedDigit()).foregroundStyle(Palette.secondary)
                 AgentModelPicker(backend: fallback.backend, selection: $fallback.model, options: $fallback.modelOptions, agents: agents,
+                                 hiddenAgents: Set(choices.filter { $0.botSelectable == false }.map(\.id)),
                                  onAgentChange: { id in
                                      guard let next = choices.first(where: { $0.id == id }) else { return }
                                      let step = BotFallback.on(next, taken: taken, own: own)

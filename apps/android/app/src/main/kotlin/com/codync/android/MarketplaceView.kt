@@ -94,7 +94,7 @@ import kotlinx.coroutines.launch
         catch (failure: Exception) { error = failure.message ?: "Couldn't load skills." }
         finally { loadingSkills = false }
     }
-    val backends = agentBackends(state)
+    val backends = agentBackends(state).filterNot { it.profileBacked }
     val agents = backends.filter { it.available || it.installed || it.curated }.filter { query.isEmpty() || it.name.contains(query, ignoreCase = true) }
     val installedSkills = state.plugins?.skills.orEmpty()
     val shownSkills = if (query.isEmpty()) skills else skills.filter { it.name.contains(query, true) || it.description.contains(query, true) }

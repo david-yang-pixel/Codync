@@ -92,6 +92,10 @@ pub(crate) async fn start_with(
 
 /// Lets the agent sign itself in (it usually opens a browser on this computer).
 pub async fn authenticate(store: &Store, backend: &str, method: &str) -> Result<Value> {
+    anyhow::ensure!(
+        backend != crate::agent::login_profiles::magpie::BACKEND,
+        "Configure the Claude Magpie API key profile in Claude Code’s Login profiles"
+    );
     // A saved session makes WorkBuddy log out first, and that logout cancels the login.
     if backend == "workbuddy" {
         tokio::task::spawn_blocking(|| backends::move_saved_session_aside("workbuddy"))

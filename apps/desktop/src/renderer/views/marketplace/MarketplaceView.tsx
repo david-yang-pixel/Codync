@@ -57,7 +57,7 @@ export function MarketplaceView() {
 
   const query = search.trim()
   const matches = (text: string | null | undefined) => (text ?? '').toLowerCase().includes(query.toLowerCase())
-  const allAgents = (store.hello?.backends ?? []).filter((b) => b.available || b.installed === true || b.curated === true)
+  const allAgents = (store.hello?.backends ?? []).filter((b) => !b.profileBacked && (b.available || b.installed === true || b.curated === true))
   const agents = query ? allAgents.filter((b) => matches(b.name)) : allAgents
   const shownSkills = query ? skills.filter((s) => matches(s.name) || matches(s.description)) : skills
   const installedCount = plugins.installedConnectors.length + plugins.installedSkills.length

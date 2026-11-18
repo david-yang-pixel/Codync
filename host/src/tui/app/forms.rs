@@ -125,7 +125,7 @@ impl App {
             }
             // A login profile is added and signed in on the agent's own sheet.
             KeyCode::Enter if matches!(field, Field::Agent | Field::LoginProfile) => {
-                let backend = f.backend.clone();
+                let backend = crate::agent::backends::agent_id(&f.backend).to_owned();
                 self.overlays.push(Overlay::Form(f));
                 self.open_agent(&backend, false);
                 return None;
@@ -143,7 +143,7 @@ impl App {
                 }
                 return None;
             }
-            KeyCode::Left | KeyCode::Right if field == Field::Model => {
+            KeyCode::Left | KeyCode::Right if field == Field::Model && !self.model_from_profile(&f.backend) => {
                 let d: isize = if k.code == KeyCode::Left { -1 } else { 1 };
                 self.want_models(&f.backend);
                 if let Some(m) = self.cycle_model(&f.backend, f.model.text.trim(), d) {
@@ -250,7 +250,7 @@ impl App {
                 let ed = match field {
                     Field::Name => Some(&mut f.name),
                     Field::Instructions => Some(&mut f.instructions),
-                    Field::Model => Some(&mut f.model),
+                    Field::Model if !self.model_from_profile(&f.backend) => Some(&mut f.model),
                     _ => None,
                 };
                 if let Some(ed) = ed {
@@ -281,12 +281,17 @@ impl App {
         self.bots.get(id).is_some_and(|b| b.agent_step.is_some())
     }
 
+    pub(in crate::tui) fn model_from_profile(&self, backend: &str) -> bool {
+        self.backends.iter().any(|b| b["id"] == backend && b["modelFromProfile"] == true)
+    }
+
     /// Agents a bot can switch to: runnable ones on this computer first.
     pub(super) fn agent_choices(&self) -> Vec<String> {
         let mut v: Vec<&Value> = self
             .backends
             .iter()
-            .filter(|b| b["available"].as_bool().unwrap_or(false) || b["registry"].is_string())
+            .filter(|b| b["botSelectable"] != false)
+            .filter(|b| b["available"] == true || b["registry"].is_string())
             .collect();
         v.sort_by_key(|b| !b["installed"].as_bool().unwrap_or(false));
         v.iter().filter_map(|b| b["id"].as_str().map(str::to_owned)).collect()

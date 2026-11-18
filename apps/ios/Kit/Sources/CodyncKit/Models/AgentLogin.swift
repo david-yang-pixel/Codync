@@ -81,6 +81,7 @@ public extension Backend {
     /// The logins a new step can still take: the computer's own (nil, first) and the login profiles that are signed in,
     /// without the ones the chain has.
     func freeLogins(taken: [AgentLogin]) -> [String?] {
+        if profileBacked == true { return available && !taken.contains { $0.backend == id } ? [nil] : [] }
         let all: [String?] = [nil] + (loginProfiles ?? []).filter(\.signedIn).map(\.id)
         return all.filter { !taken.contains(AgentLogin(backend: id, loginProfile: $0)) }
     }
@@ -97,7 +98,7 @@ public extension [Backend] {
     /// while no other step has that login (a step keeps its own login, even one that has signed out since).
     func usable(taken: [AgentLogin], keeping keep: [AgentLogin] = []) -> [Backend] {
         filter { backend in
-            keep.contains { $0.backend == backend.id && !taken.contains($0) } || !backend.freeLogins(taken: taken).isEmpty
+            keep.contains { $0.backend == backend.id && !taken.contains($0) } || (backend.botSelectable != false && !backend.freeLogins(taken: taken).isEmpty)
         }
     }
 }

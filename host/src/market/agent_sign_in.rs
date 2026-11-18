@@ -109,7 +109,9 @@ fn invite_saying(
     text: &str,
 ) -> Result<()> {
     let _guard = SIGN_IN.locked();
-    let backend = login.backend.as_str();
+    // The card opens the API-key editor on the underlying Claude entry.
+    let magpie = login.backend == login_profiles::magpie::BACKEND;
+    let backend = if magpie && login.profile.is_some() { "claude" } else { login.backend.as_str() };
     // In a room the card's chat is the room's: `botId` says whose it is.
     let mine = |card: &crate::store::Entry| {
         let request = &card.data["connectionRequest"];
@@ -140,7 +142,8 @@ fn invite_saying(
         }
         return Ok(());
     }
-    let name = backends::harness(backend).map_or(backend, |h| h.name);
+    let name =
+        if magpie { login_profiles::magpie::NAME } else { backends::harness(backend).map_or(backend, |h| h.name) };
     let mut request = json!({"kind": RequestKind::Agent, "status": RequestStatus::Pending, "title": name,
         "botId": bot, "backend": backend, "entryIds": entries});
     // A login profile's: the apps open that sign-in, not the computer's own.
@@ -203,13 +206,20 @@ pub async fn check_login_profile(hub: &Hub, id: &str) -> Result<Value> {
 /// Gives API key login profile `id` its keys (`login_profiles::keys::set`), and answers as
 /// [`check_login_profile`] does.
 pub async fn set_keys(hub: &Hub, id: &str, typed: &serde_json::Map<String, Value>, import: &[String]) -> Result<Value> {
-    settled(hub, &login_profiles::keys::set(&hub.store, id, typed, import).await?)
+    let profile = login_profiles::keys::set(&hub.store, id, typed, import).await?;
+    if profile.account.agent == "claude" {
+        login_profiles::magpie::keys_changed(hub, id);
+    }
+    settled(hub, &profile)
 }
 
 /// `profile` as just checked or changed: once it's signed in, the cards that wait on it complete.
 fn settled(hub: &Hub, profile: &login_profiles::Profile) -> Result<Value> {
     if profile.account.signed_in {
         signed_in(hub, &profile.account.agent, Some(&profile.account.id))?;
+        if login_profiles::magpie::profile(&hub.store, Some(&profile.account.id)).is_ok() {
+            signed_in(hub, login_profiles::magpie::BACKEND, Some(&profile.account.id))?;
+        }
     } else {
         // Signed out, it leaves the Usage screens.
         crate::usage::login_profiles_changed(hub);

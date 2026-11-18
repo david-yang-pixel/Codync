@@ -218,7 +218,7 @@ fn rank(word: &str) -> Option<u8> {
 /// `auto` may approve everything without asking (Goose's).
 fn auto_mode<'a>(backend: &str, list: &'a [Mode]) -> Option<&'a Mode> {
     list.iter()
-        .find(|m| backend == "claude" && m.id == AUTO)
+        .find(|m| super::backends::agent_id(backend) == "claude" && m.id == AUTO)
         .or_else(|| list.iter().find(|m| m.name.eq_ignore_ascii_case("auto review")))
 }
 

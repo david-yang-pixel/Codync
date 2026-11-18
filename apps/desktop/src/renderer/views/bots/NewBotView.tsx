@@ -7,7 +7,7 @@ import { HStack, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { useStore } from '../../store/context'
 import { useTr } from '../../lib/use-language'
-import { errorText, fillDefaults, newDraft } from './drafts'
+import { errorText, newDraft } from './drafts'
 import { AvatarPicker } from './parts'
 import './bots.css'
 
@@ -27,7 +27,7 @@ export function NewBotView({ computer }: { computer: ComputerChoice | null }) {
   const [draft, setDraft] = useState(newDraft)
 
   const create = async () => {
-    const bot = await store.save(fillDefaults(store, { ...draft, name: draft.name.trim() }))
+    const bot = await store.save({ ...draft, name: draft.name.trim() })
     store.setSelection(bot.id)
   }
 

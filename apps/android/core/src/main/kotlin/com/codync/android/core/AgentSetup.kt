@@ -27,7 +27,8 @@ import kotlinx.serialization.json.*
      */
     val loginProfileSignIn: String? = null,
     /** The variable names its API key usually goes in, to start an API key profile's form with. */
-    val loginKeys: List<String> = emptyList()) {
+    val loginKeys: List<String> = emptyList(),
+    val botSelectable: Boolean = true, val profileBacked: Boolean = false, val modelFromProfile: Boolean = false) {
     /** Runs on Node.js and the computer has none yet. */
     val needsNode: Boolean get() = node == "missing"
     /** Its login profiles sign in through the agent, in a browser on the computer: no terminal opens. */

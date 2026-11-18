@@ -4,12 +4,13 @@ import { Icon } from '../../components/Icon'
 import { HStack, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import type { AgentModelsState } from './agent-models'
+import { useStore } from '../../store/context'
 import { useTr } from '../../lib/use-language'
 import './agent-picker.css'
 import { isReasoningOption, ReasoningSlider } from './ReasoningSlider'
 
 type Stage = 'closed' | 'settings' | 'agents' | 'models'
-type Choice = { id: string; label: string; leading?: ReactNode }
+type Choice = { id: string; label: string; leading?: ReactNode; hidden?: boolean }
 
 /** One compact entry for the harness, model, model options and the bot's Fast mode. */
 export function AgentModelPicker({ backend, models, selection, onChange, options: chosen,
@@ -32,20 +33,24 @@ export function AgentModelPicker({ backend, models, selection, onChange, options
   const tr = useTr()
   const [stage, setStage] = useState<Stage>(expanded ? 'settings' : 'closed')
   const [query, setQuery] = useState('')
-  const { catalog, loading, failure } = models
+  const { loading, failure } = models
+  const store = useStore()
+  const profileModel = store.hello?.backends.find((agent) => agent.id === backend)?.modelFromProfile === true
+  const catalog = profileModel ? null : models.catalog
+  const profileDefault = `${tr('Default')} · ${tr('Login profile')}`
   const agentDefault = catalog?.models.find((m) => m.name.toLowerCase().startsWith('default'))
   const available = (catalog?.models ?? []).filter((m) => m.id !== agentDefault?.id)
   const current = catalog?.models.find((m) => m.id === catalog.currentModelId)
-  const value = selection === agentDefault?.id ? '' : (selection ?? '')
+  const value = profileModel || selection === agentDefault?.id ? '' : (selection ?? '')
   const selected = catalog?.models.find((m) => m.id === (value || agentDefault?.id || catalog.currentModelId))
   const modelOptions = value || catalog?.defaultModelOptions ? selected?.options ?? [] : []
-  const options: Choice[] = [{ id: '', label: agentDefault?.name ?? (current ? tr('Default · {name}').replaceAll('{name}', () => current.name) : tr('Default')) }, ...available.map((m) => ({ id: m.id, label: m.name }))]
+  const options: Choice[] = [{ id: '', label: profileModel ? profileDefault : agentDefault?.name ?? (current ? tr('Default · {name}').replaceAll('{name}', () => current.name) : tr('Default')) }, ...available.map((m) => ({ id: m.id, label: m.name }))]
   if (value && !available.some((m) => m.id === value)) options.push({ id: value, label: value })
   const agent = agents.find((a) => a.id === backend)
-  const modelName = value ? options.find((o) => o.id === value)?.label ?? value : tr('Default')
+  const modelName = profileModel ? profileDefault : value ? options.find((o) => o.id === value)?.label ?? value : tr('Default')
   const summary = modelOptions.map((o) => o.values.find((v) => v.id === (chosen[o.id] ?? o.default))?.name).filter(Boolean).join(' · ')
   const browse = stage === 'agents' || stage === 'models'
-  const choices = (stage === 'agents' ? agents : options).filter((o) => o.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+  const choices = (stage === 'agents' ? agents : options).filter((o) => !o.hidden && o.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
   const open = (next: Stage) => { setQuery(''); setStage(next) }
   const pick = (id: string) => {
     if (stage === 'agents') {
@@ -88,7 +93,7 @@ export function AgentModelPicker({ backend, models, selection, onChange, options
               {o.leading}<Text className="agent-picker-result-name">{tr(o.label)}</Text><Spacer />{o.id === (stage === 'agents' ? backend : value) && <Icon name="checkmark" size={12} />}
             </button>)}
           </div> : <Text size="caption" tone="secondary">{tr('No results')}</Text>}
-          {stage === 'models' && (backend === 'custom' || (!loading && !catalog?.models.length)) && <input className="field-box" aria-label={tr('Model')} placeholder={tr('Default')} value={selection ?? ''} onChange={(e) => onChange(e.target.value || null, {})} />}
+          {stage === 'models' && !profileModel && (backend === 'custom' || (!loading && !catalog?.models.length)) && <input className="field-box" aria-label={tr('Model')} placeholder={tr('Default')} value={selection ?? ''} onChange={(e) => onChange(e.target.value || null, {})} />}
         </VStack>}
         {selected?.optionsError && <Text size="caption" tone="attention">{selected.optionsError}</Text>}
         {failure && <Text size="caption" tone="attention">{failure}</Text>}

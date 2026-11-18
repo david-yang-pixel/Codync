@@ -158,6 +158,9 @@ impl Actor {
     /// sets `turn_session`.
     async fn ensure_session(&mut self, slot: Option<&str>) -> Result<()> {
         let profile = self.cfg.login_profile.as_deref();
+        if self.cfg.backend == crate::agent::login_profiles::magpie::BACKEND {
+            crate::agent::login_profiles::magpie::profile(&self.hub.store, profile)?;
+        }
         if !self.cfg.connectors.is_empty()
             || crate::agent::auth::launch_reads_vault(&self.hub.store, &self.cfg.backend, profile)?
         {
@@ -249,7 +252,7 @@ impl Actor {
                     // A resumed session can come back on the agent's last-used model (Cursor
                     // keeps one for all its sessions), so the bot's own is set again.
                     let res = if res.get("configOptions").is_some() || res.get("models").is_some() {
-                        match select_model(&conn.acp, &res, &sid, &self.cfg).await {
+                        match select_model(conn, &res, &sid, &self.cfg).await {
                             Ok(selected) => selected,
                             Err(error) => {
                                 // The agent now holds a session the host doesn't track, and `session/resume` refuses
@@ -338,7 +341,7 @@ impl Actor {
         let sid = res["sessionId"].as_str().ok_or_else(|| anyhow!("agent returned no sessionId"))?.to_owned();
         conn.loaded.insert(sid.clone(), Instant::now());
         conn.renamed.insert(sid.clone(), renamed);
-        let options = select_model(&conn.acp, res, &sid, &self.cfg).await?;
+        let options = select_model(conn, res, &sid, &self.cfg).await?;
         self.note_options(&sid, &options, Listing::Session);
         self.set_session(slot, Some(&sid));
         self.session_fresh = true;
@@ -394,8 +397,17 @@ impl Actor {
 
     /// A session request the agent doesn't answer in time stops the agent: a hung one
     /// would otherwise hold the bot, and its Stop, forever.
-    pub(super) async fn session_request(&mut self, method: &str, params: Value) -> Result<Value> {
+    pub(super) async fn session_request(&mut self, method: &str, mut params: Value) -> Result<Value> {
         let conn = self.conn.as_mut().ok_or_else(|| anyhow!("agent not running"))?;
+        if self.cfg.backend == crate::agent::login_profiles::magpie::BACKEND
+            && matches!(method, "session/new" | "session/load" | "session/resume" | "session/fork")
+        {
+            let options = &mut params["_meta"]["claudeCode"]["options"];
+            options["settingSources"] = json!([]);
+            if let Some(model) = &conn.profile_model {
+                options["model"] = model.as_str().into();
+            }
+        }
         conn.opening = matches!(method, "session/new" | "session/load" | "session/resume");
         let answered = tokio::time::timeout(SESSION_TIMEOUT, conn.acp.request(method, params)).await;
         conn.opening = false;

@@ -305,7 +305,7 @@ public final class BotStore {
 
     /// An agent as the Agent pickers list it.
     func agentLabel(_ backend: Backend) -> String {
-        backend.available ? backend.name : "\(backend.name) (not installed)"
+        backend.available || backend.profileBacked == true ? backend.name : "\(backend.name) (not installed)"
     }
 
     public var hiddenBots: [Bot] { bots.values.filter(\.hidden).sorted { $0.name < $1.name } }

@@ -109,6 +109,7 @@ struct BotSettingsForm: View {
                              withAnimation(Motion.reduced(Motion.fade, reduceMotion)) { draft.fastMode = on }
                          }), bot: bot,
                          agents: (model.hello?.backends ?? []).map { ($0.id, model.agentLabel($0)) } + [("custom", "Custom command")],
+                         hiddenAgents: Set((model.hello?.backends ?? []).filter { $0.botSelectable == false }.map(\.id)),
                          onAgentChange: { draft.setAgent($0) }, command: $draft.command,
                          installHint: model.hello?.backends.first { $0.id == draft.backend && !$0.available }?.installHint,
                          restLine: bot?.rest(of: draft.login).map { L10n.tr($0.line) }, onReload: { modelReload += 1 }) {}

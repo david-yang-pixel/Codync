@@ -26,8 +26,7 @@ pub async fn with_defaults(hub: &Arc<Hub>, mut b: Value) -> Result<BotConfig> {
     }
     // And the agent, when the client names none.
     if b["backend"].as_str().is_none_or(str::is_empty) && b["kind"] != "group" {
-        let agents = tokio::task::spawn_blocking(super::backends::list).await?;
-        b["backend"] = default_backend(&agents).into();
+        b["backend"] = "codex".into();
     }
     serde_json::from_value(b).context("invalid bot")
 }
@@ -48,30 +47,21 @@ async fn default_connectors(hub: &Arc<Hub>) -> Result<Value> {
     })
 }
 
-/// A new bot's agent (`agents` as `backends::list` gives them): Claude when it runs here, else the
-/// first one Codync knows that does. A registry agent nobody chose is never the default.
-fn default_backend(agents: &[Value]) -> &str {
-    let runnable = || agents.iter().filter(|a| a["available"] == true);
-    if runnable().any(|a| a["id"] == "claude") {
-        return "claude";
-    }
-    runnable().find(|a| a["curated"] == true).and_then(|a| a["id"].as_str()).unwrap_or("claude")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_default_agent_is_claude_then_the_first_known_one() {
-        assert_eq!(default_backend(&[]), "claude", "nothing installed");
-        let mut agents = vec![
-            json!({"id": "goose", "available": true, "curated": false}),
-            json!({"id": "codex", "available": true, "curated": true}),
-            json!({"id": "claude", "available": false, "curated": true}),
-        ];
-        assert_eq!(default_backend(&agents), "codex");
-        agents[2]["available"] = true.into();
-        assert_eq!(default_backend(&agents), "claude");
+    #[tokio::test]
+    async fn omitted_agent_and_model_use_codex_defaults_and_explicit_choices_are_preserved() {
+        let hub = crate::chat::calls::context::tests::hub();
+        let defaults = with_defaults(&hub, json!({"name": "Default"})).await.expect("new bot");
+        assert_eq!(defaults.backend, "codex");
+        assert_eq!(defaults.model, None);
+        for backend in ["codex", "claude"] {
+            let requested = json!({"name": "Explicit", "backend": backend, "model": "user-choice"});
+            let cfg = with_defaults(&hub, requested).await.expect("new bot");
+            assert_eq!(cfg.backend, backend);
+            assert_eq!(cfg.model.as_deref(), Some("user-choice"));
+        }
     }
 }

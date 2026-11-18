@@ -43,13 +43,16 @@ private enum class PickerStage { Closed, Agents, Models, Settings }
 @Composable internal fun AgentModelPicker(state: AppState, load: suspend (String) -> AgentModels, backend: String, selection: String?,
     options: Map<String, String>, fastMode: Boolean, bot: Bot?, choose: (String?, Map<String, String>) -> Unit, setFast: ((Boolean) -> Unit)?,
     agents: List<Pair<String, String>> = emptyList(), chooseAgent: ((String) -> Unit)? = null,
-    onReload: () -> Unit = {}, expanded: Boolean = false, agentDetails: @Composable () -> Unit = {}) {
+    onReload: () -> Unit = {}, expanded: Boolean = false, hiddenAgents: Set<String> = emptySet(), agentDetails: @Composable () -> Unit = {}) {
     val online = state.actualConnection is LinkState.Ready
-    var catalog by remember(backend) { mutableStateOf<AgentModels?>(null) }
+    val selectedBackend = agentBackends(state).firstOrNull { it.id == backend }
+    val modelFromProfile = selectedBackend?.modelFromProfile == true
+    val available = selectedBackend?.available == true
+    var catalog by remember(state.computer.id, backend, modelFromProfile, available) { mutableStateOf<AgentModels?>(null) }
     var loading by remember(backend) { mutableStateOf(false) }
     var failure by remember(backend) { mutableStateOf<String?>(null) }
     var retry by remember(backend) { mutableIntStateOf(0) }
-    LaunchedEffect(state.computer.id, backend, online, retry) {
+    LaunchedEffect(state.computer.id, backend, online, retry, modelFromProfile, available) {
         failure = null; loading = false
         if (backend == "custom") return@LaunchedEffect
         if (!online) { failure = "Connect to this computer to load its models. You can still enter a model ID."; return@LaunchedEffect }
@@ -65,12 +68,17 @@ private enum class PickerStage { Closed, Agents, Models, Settings }
     fun open(next: PickerStage) { query = ""; stage = next }
     // The agent's own "Default" entry is the same choice as no model.
     val agentDefault = catalog?.agentDefault
-    val value = if (selection == agentDefault?.id) "" else selection.orEmpty()
+    val value = if (modelFromProfile || selection == agentDefault?.id) "" else selection.orEmpty()
     val selectedModel = catalog?.models?.firstOrNull { it.id == (selection ?: agentDefault?.id ?: catalog?.currentModelId) }
-    val modelOptions = if (value.isNotEmpty() || catalog?.defaultModelOptions == true) selectedModel?.options.orEmpty() else emptyList()
-    val modelChoices = catalog?.options(selection)?.map { it.id.orEmpty() to it.name } ?: listOf("" to "Default")
+    val modelOptions = if (!modelFromProfile && (value.isNotEmpty() || catalog?.defaultModelOptions == true)) selectedModel?.options.orEmpty() else emptyList()
+    val profileDefault = "${tr("Default")} · ${tr("Login profile")}"
+    val modelChoices = if (modelFromProfile) listOf("" to profileDefault) else catalog?.options(selection)?.map { it.id.orEmpty() to it.name } ?: listOf("" to "Default")
     val agentName = agents.firstOrNull { it.first == backend }?.second ?: backend
-    val modelName = if (value.isEmpty()) "Default" else modelChoices.firstOrNull { it.first == value }?.second ?: value
+    val modelName = when {
+        modelFromProfile -> profileDefault
+        value.isEmpty() -> "Default"
+        else -> modelChoices.firstOrNull { it.first == value }?.second ?: value
+    }
     val levels = modelOptions.mapNotNull { option -> option.values.firstOrNull { it.id == (options[option.id] ?: option.default) }?.name }
     val summary = (listOf(agentName, modelName) + levels + if (fastMode) listOf("Fast") else emptyList()).joinToString(" · ")
     val unfold = tr(if (stage == PickerStage.Closed) "Collapsed" else "Expanded")
@@ -95,7 +103,7 @@ private enum class PickerStage { Closed, Agents, Models, Settings }
                     Box(Modifier.weight(1f)) { PlainTextField(query, { query = it }, prompt = if (stage == PickerStage.Agents) "Search agents" else "Search models", singleLine = true) }
                     if (loading) Spinner(12.dp) else IconButton(if (failure == null) "Refresh model list" else "Retry model list", "arrow.clockwise") { retry++; onReload() }
                 }
-                val choices = (if (stage == PickerStage.Agents) agents else modelChoices).filter { it.second.contains(query, ignoreCase = true) }
+                val choices = (if (stage == PickerStage.Agents) agents.filter { it.first !in hiddenAgents } else modelChoices).filter { it.second.contains(query, ignoreCase = true) }
                 val scroll = rememberScrollState()
                 // The rows blur under the edges into the card's fill (an outlined card has none: the page shows).
                 val ground = if (LocalCardStyle.current == CardStyle.Outlined) Palette.background else Palette.surface
@@ -109,7 +117,7 @@ private enum class PickerStage { Closed, Agents, Models, Settings }
                     }
                     if (choices.isEmpty()) Text("No results", style = Type.caption, color = Palette.secondary)
                 } }
-                if (stage == PickerStage.Models && (backend == "custom" || (!loading && catalog?.models.isNullOrEmpty())))
+                if (stage == PickerStage.Models && !modelFromProfile && (backend == "custom" || (!loading && catalog?.models.isNullOrEmpty())))
                     PlainTextField(value, { choose(it.ifEmpty { null }, emptyMap()) }, prompt = "Default", singleLine = true)
             }
             for (option in modelOptions) {

@@ -82,6 +82,9 @@ pub fn harness(id: &str) -> Option<&'static Harness> {
 
 /// The harness a bot's `backend` is: by its own id or its registry entry's.
 pub fn harness_of(backend: &str) -> Option<&'static Harness> {
+    if backend == super::login_profiles::magpie::BACKEND {
+        return harness("claude");
+    }
     HARNESSES.iter().find(|h| h.answers_to(backend))
 }
 
@@ -203,12 +206,15 @@ pub async fn explain_exit(
 }
 
 pub fn is_known(id: &str) -> bool {
-    harness(id).is_some() || registry::agent(id).is_some()
+    id == super::login_profiles::magpie::BACKEND || harness(id).is_some() || registry::agent(id).is_some()
 }
 
 /// Ways to start this backend, best first: the installed CLI's own ACP mode, then the
 /// registry build, for a CLI that isn't installed, has no ACP mode of its own, or is too old for it.
 pub fn launch_candidates(id: &str) -> anyhow::Result<Vec<registry::Candidate>> {
+    if id == super::login_profiles::magpie::BACKEND {
+        return launch_candidates("claude");
+    }
     let h = harness(id);
     let build = h.map_or(Some(id), |h| h.registry).and_then(registry::agent);
     let out: Vec<_> = local_candidate(id)
